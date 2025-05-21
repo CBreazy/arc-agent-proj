@@ -20,6 +20,13 @@ if __name__ == "__main__":
     delta = infer_horizontal_repeat(test_grid)
     print(f"Inferred horizontal repeat delta: {delta}")
 
+    from arc_agent.engine import propagate_symbols_horizontally
+
+    prop_output = propagate_symbols_horizontally(test_grid, delta, 2, 8)
+    print("Pattern Propagation Output:")
+    from arc_agent.utils import print_grid
+    print_grid(prop_output)
+
     predictions = solve(sample_task)
     for grid in predictions:
         print_grid(grid)

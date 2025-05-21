@@ -36,6 +36,28 @@ def rule_fill_diagonal(grid):
         return True, output
     return False, None
 
+def rule_repeat_observed_pattern(grid):
+    """
+    Detects repeatable symbol patterns in a row and reproduces them across the row.
+    Triggers only if two or more non-zero symbols appear in sequence.
+    """
+    symbols = extract_nonzero_positions(grid)
+    delta = infer_horizontal_repeat(grid)
+
+    if not delta or len(symbols) < 2:
+        return False, None
+
+    # Get the two most common distinct symbols from the same row
+    same_row = [s for s in symbols if s[1] == symbols[0][1]]  # restrict to row of first symbol
+    distinct_vals = list(set(s[2] for s in same_row))
+    if len(distinct_vals) < 2:
+        return False, None
+
+    sym1, sym2 = distinct_vals[:2]
+    output = propagate_symbols_horizontally(grid, delta, sym1, sym2)
+    return True, output
+
+
 def extract_nonzero_positions(grid):
     """Extract all non-zero positions"""
     positions = []
@@ -71,6 +93,40 @@ def infer_horizontal_repeat(grid):
 
     return None
 
+def propagate_symbols_horizontally(grid, delta, sym1, sym2):
+    """
+    Use the actual pattern between sym1 and sym2 to replicate it horizontally.
+    """
+    height = len(grid)
+    width = len(grid[0])
+    output = [row.copy() for row in grid]
+
+    # Build the pattern based on input grid slice
+    # Find their x-positions on the same row
+    symbols = extract_nonzero_positions(grid)
+    for y in range(height):
+        row_symbols = [s for s in symbols if s[1] == y]
+        if len(row_symbols) >= 2:
+            row_symbols.sort()  # sort by x
+            pattern = []
+            last_x = row_symbols[0][0]
+            pattern.append(row_symbols[0][2])
+            for i in range(1, len(row_symbols)):
+                gap = row_symbols[i][0] - last_x - 1
+                pattern.extend([0] * gap)
+                pattern.append(row_symbols[i][2])
+                last_x = row_symbols[i][0]
+
+            # Now repeat this pattern across the row
+            pattern_len = len(pattern)
+            for x in range(0, width, pattern_len):
+                for i, val in enumerate(pattern):
+                    if x + i < width:
+                        output[y][x + i] = val
+
+    return output
+
+
 
 
 # ==========================
@@ -78,7 +134,7 @@ def infer_horizontal_repeat(grid):
 # ==========================
 
 def solve_task_logic(task):
-    rules = [rule_all_zeros, rule_horizontal_symmetry, rule_fill_with_constant, rule_fill_diagonal]
+    rules = [rule_all_zeros, rule_horizontal_symmetry, rule_fill_with_constant, rule_fill_diagonal, rule_repeat_observed_pattern]
     test_outputs = []
 
     for test in task["test"]:
