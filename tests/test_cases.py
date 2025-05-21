@@ -4,9 +4,10 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 
 # Sample ARC test input (to be replaced with actual tasks)
 sample_task = {
-    "train": [{"input": [[2, 0], [0, 0]], "output": [[2, 2], [2, 2]]}],
-    "test": [{"input": [[0, 0], [2, 0]]}]
+    "train": [{"input": [[1, 0, 1], [0, 1, 0]], "output": [[0, 1, 0], [1, 0, 1]]}],
+    "test": [{"input": [[1, 0, 1], [0, 1, 0]]}]
 }
+
 
 if __name__ == "__main__":
     from arc_agent.solve import solve
