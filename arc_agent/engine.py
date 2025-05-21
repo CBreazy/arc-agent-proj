@@ -1,5 +1,64 @@
 from arc_agent.utils import print_grid
 
+def learn_patterns_from_training(grid):
+    """
+    Detects all repeating symbolic patterns from the training input.
+    Returns a list of (start_x, pattern, leading_symbol) tuples.
+    """
+    patterns = []
+    for y, row in enumerate(grid):
+        symbols = [(x, val) for x, val in enumerate(row) if val != 0]
+        if len(symbols) >= 2:
+            # sort by x-position
+            symbols.sort()
+            pattern = []
+            last_x = symbols[0][0]
+            pattern.append(symbols[0][1])
+            for i in range(1, len(symbols)):
+                gap = symbols[i][0] - last_x - 1
+                pattern.extend([0] * gap)
+                pattern.append(symbols[i][1])
+                last_x = symbols[i][0]
+            start_x = symbols[0][0]
+            leading = symbols[0][1]
+            patterns.append((start_x, pattern, leading))
+    return patterns
+
+
+def apply_patterns_to_test_grid(grid, learned_patterns):
+    """
+    For each test row, apply a matching pattern from training if a known symbol is found.
+    """
+    height = len(grid)
+    width = len(grid[0])
+    output = [row.copy() for row in grid]
+
+    for y in range(height):
+        row = grid[y]
+        row_syms = [val for val in row if val != 0]
+        if not row_syms:
+            continue
+
+        matched = False
+        for (start_x, pattern, leading) in learned_patterns:
+            if any(symbol in row_syms for symbol in pattern):
+                # Apply this pattern
+                new_row = [0] * width
+                for x in range(start_x, width, len(pattern)):
+                    for i, val in enumerate(pattern):
+                        if x + i < width:
+                            new_row[x + i] = val
+                output[y] = new_row
+                matched = True
+                break
+
+        if not matched:
+            # Default to original row if no pattern matched
+            output[y] = row.copy()
+
+    return output
+
+
 # ==========================
 # RULE DEFINITIONS
 # ==========================
@@ -38,24 +97,48 @@ def rule_fill_diagonal(grid):
 
 def rule_repeat_observed_pattern(grid):
     """
-    Detects repeatable symbol patterns in a row and reproduces them across the row.
-    Triggers only if two or more non-zero symbols appear in sequence.
+    For each row, detect a minimal repeating pattern using non-zero values.
+    If a valid pattern is found on one row, reuse it on all other rows.
     """
-    symbols = extract_nonzero_positions(grid)
-    delta = infer_horizontal_repeat(grid)
+    height = len(grid)
+    width = len(grid[0])
+    output = [row.copy() for row in grid]
+    rule_applied = False
+    fallback_pattern = None
+    fallback_start = 0
 
-    if not delta or len(symbols) < 2:
-        return False, None
+    for y in range(height):
+        row = grid[y]
+        symbols = [(x, row[x]) for x in range(len(row)) if row[x] != 0]
 
-    # Get the two most common distinct symbols from the same row
-    same_row = [s for s in symbols if s[1] == symbols[0][1]]  # restrict to row of first symbol
-    distinct_vals = list(set(s[2] for s in same_row))
-    if len(distinct_vals) < 2:
-        return False, None
+        if fallback_pattern is None and len(symbols) >= 2 and len(set(val for _, val in symbols)) >= 2:
+            # Build pattern for this row
+            symbols.sort(key=lambda tup: tup[0])
+            pattern = []
+            last_x = symbols[0][0]
+            pattern.append(symbols[0][1])
+            for i in range(1, len(symbols)):
+                gap = symbols[i][0] - last_x - 1
+                pattern.extend([0] * gap)
+                pattern.append(symbols[i][1])
+                last_x = symbols[i][0]
+            fallback_pattern = pattern
+            fallback_start = symbols[0][0]
 
-    sym1, sym2 = distinct_vals[:2]
-    output = propagate_symbols_horizontally(grid, delta, sym1, sym2)
-    return True, output
+            print(f"📦 Learned fallback pattern: {fallback_pattern} starting at x={fallback_start}")
+
+        if fallback_pattern and y != 0:
+            print(f"🔁 Applying fallback pattern to row {y}")
+            # Apply the most recent pattern to this row
+            new_row = [0] * width
+            for x in range(fallback_start, width, len(fallback_pattern)):
+                for i, val in enumerate(fallback_pattern):
+                    if x + i < width:
+                        new_row[x + i] = val
+            output[y] = new_row
+            rule_applied = True
+
+    return (True, output) if rule_applied else (False, None)
 
 
 def extract_nonzero_positions(grid):
@@ -101,31 +184,31 @@ def propagate_symbols_horizontally(grid, delta, sym1, sym2):
     width = len(grid[0])
     output = [row.copy() for row in grid]
 
-    # Build the pattern based on input grid slice
-    # Find their x-positions on the same row
-    symbols = extract_nonzero_positions(grid)
     for y in range(height):
-        row_symbols = [s for s in symbols if s[1] == y]
-        if len(row_symbols) >= 2:
-            row_symbols.sort()  # sort by x
-            pattern = []
-            last_x = row_symbols[0][0]
-            pattern.append(row_symbols[0][2])
-            for i in range(1, len(row_symbols)):
-                gap = row_symbols[i][0] - last_x - 1
-                pattern.extend([0] * gap)
-                pattern.append(row_symbols[i][2])
-                last_x = row_symbols[i][0]
+        row = grid[y]
+        row_symbols = [(x, row[x]) for x in range(len(row)) if row[x] != 0]
 
-            # Now repeat this pattern across the row
-            pattern_len = len(pattern)
-            for x in range(0, width, pattern_len):
-                for i, val in enumerate(pattern):
-                    if x + i < width:
-                        output[y][x + i] = val
+        if len(row_symbols) < 2:
+            continue
+
+        row_symbols.sort()  # sort by x
+        pattern = []
+        last_x = row_symbols[0][0]
+        pattern.append(row_symbols[0][1])
+
+        for i in range(1, len(row_symbols)):
+            gap = row_symbols[i][0] - last_x - 1
+            pattern.extend([0] * gap)
+            pattern.append(row_symbols[i][1])
+            last_x = row_symbols[i][0]
+
+        pattern_len = len(pattern)
+        for x in range(row_symbols[0][0], width, pattern_len):
+            for i, val in enumerate(pattern):
+                if x + i < width:
+                    output[y][x + i] = val
 
     return output
-
 
 
 
@@ -134,19 +217,20 @@ def propagate_symbols_horizontally(grid, delta, sym1, sym2):
 # ==========================
 
 def solve_task_logic(task):
-    rules = [rule_all_zeros, rule_horizontal_symmetry, rule_fill_with_constant, rule_fill_diagonal, rule_repeat_observed_pattern]
-    test_outputs = []
+    rules = [
+        rule_all_zeros, 
+        rule_horizontal_symmetry, 
+        rule_fill_with_constant, 
+        rule_fill_diagonal, 
+        # rule_repeat_observed_pattern
+    ]
 
+    train_grid = task["train"][0]["input"]
+    learned_patterns = learn_patterns_from_training(train_grid)
+
+    test_outputs = []
     for test in task["test"]:
-        grid = test["input"]
-        matched = False
-        for rule in rules:
-            result, output = rule(grid)
-            if result:
-                matched = True
-                break
-        if not matched:
-            output = grid  # fallback
-        test_outputs.append(output)
+        test_output = apply_patterns_to_test_grid(test["input"], learned_patterns)
+        test_outputs.append(test_output)
 
     return test_outputs
