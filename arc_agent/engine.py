@@ -2,235 +2,103 @@ from arc_agent.utils import print_grid
 
 def learn_patterns_from_training(grid):
     """
-    Detects all repeating symbolic patterns from the training input.
-    Returns a list of (start_x, pattern, leading_symbol) tuples.
+    Extracts simple symbol-based patterns from the grid.
+    Returns a list of (start_x, pattern, leading_symbol, roles) tuples.
     """
     patterns = []
     for y, row in enumerate(grid):
-        symbols = [(x, val) for x, val in enumerate(row) if val != 0]
-        if len(symbols) >= 2:
-            # sort by x-position
-            symbols.sort()
-            pattern = []
-            last_x = symbols[0][0]
-            pattern.append(symbols[0][1])
-            for i in range(1, len(symbols)):
-                gap = symbols[i][0] - last_x - 1
-                pattern.extend([0] * gap)
-                pattern.append(symbols[i][1])
-                last_x = symbols[i][0]
-            start_x = symbols[0][0]
-            leading = symbols[0][1]
-            patterns.append((start_x, pattern, leading))
-    return patterns
-
-
-def apply_patterns_to_test_grid(grid, learned_patterns):
-    """
-    For each test row, apply a matching pattern from training if a known symbol is found.
-    """
-    height = len(grid)
-    width = len(grid[0])
-    output = [row.copy() for row in grid]
-
-    for y in range(height):
-        row = grid[y]
-        row_syms = [val for val in row if val != 0]
-        if not row_syms:
-            continue
-
-        matched = False
-        for (start_x, pattern, leading) in learned_patterns:
-            if any(symbol in row_syms for symbol in pattern):
-                # Apply this pattern
-                new_row = [0] * width
-                for x in range(start_x, width, len(pattern)):
-                    for i, val in enumerate(pattern):
-                        if x + i < width:
-                            new_row[x + i] = val
-                output[y] = new_row
-                matched = True
-                break
-
-        if not matched:
-            # Default to original row if no pattern matched
-            output[y] = row.copy()
-
-    return output
-
-
-# ==========================
-# RULE DEFINITIONS
-# ==========================
-
-def rule_all_zeros(grid):
-    """If all cells are 0 → fill grid with 1s"""
-    flat = [cell for row in grid for cell in row]
-    if all(cell == 0 for cell in flat):
-        output = [[1 for _ in row] for row in grid]
-        return True, output
-    return False, None
-
-def rule_horizontal_symmetry(grid):
-    """If grid is horizontally symmetric → return vertical mirror"""
-    if all(row == row[::-1] for row in grid):
-        return True, grid[::-1]
-    return False, None
-
-def rule_fill_with_constant(grid):
-    """If only one non-zero value exists → fill grid with that value"""
-    flat = [cell for row in grid for cell in row]
-    if len(set(flat)) == 2 and 0 in flat:
-        non_zero_vals = [v for v in flat if v != 0]
-        if len(set(non_zero_vals)) == 1:
-            val = non_zero_vals[0]
-            output = [[val for _ in row] for row in grid]
-            return True, output
-    return False, None
-
-def rule_fill_diagonal(grid):
-    if len(grid) == len(grid[0]):  # must be square
-        n = len(grid)
-        output = [[1 if i == j else 0 for j in range(n)] for i in range(n)]
-        return True, output
-    return False, None
-
-def rule_repeat_observed_pattern(grid):
-    """
-    For each row, detect a minimal repeating pattern using non-zero values.
-    If a valid pattern is found on one row, reuse it on all other rows.
-    """
-    height = len(grid)
-    width = len(grid[0])
-    output = [row.copy() for row in grid]
-    rule_applied = False
-    fallback_pattern = None
-    fallback_start = 0
-
-    for y in range(height):
-        row = grid[y]
-        symbols = [(x, row[x]) for x in range(len(row)) if row[x] != 0]
-
-        if fallback_pattern is None and len(symbols) >= 2 and len(set(val for _, val in symbols)) >= 2:
-            # Build pattern for this row
-            symbols.sort(key=lambda tup: tup[0])
-            pattern = []
-            last_x = symbols[0][0]
-            pattern.append(symbols[0][1])
-            for i in range(1, len(symbols)):
-                gap = symbols[i][0] - last_x - 1
-                pattern.extend([0] * gap)
-                pattern.append(symbols[i][1])
-                last_x = symbols[i][0]
-            fallback_pattern = pattern
-            fallback_start = symbols[0][0]
-
-            print(f"📦 Learned fallback pattern: {fallback_pattern} starting at x={fallback_start}")
-
-        if fallback_pattern and y != 0:
-            print(f"🔁 Applying fallback pattern to row {y}")
-            # Apply the most recent pattern to this row
-            new_row = [0] * width
-            for x in range(fallback_start, width, len(fallback_pattern)):
-                for i, val in enumerate(fallback_pattern):
-                    if x + i < width:
-                        new_row[x + i] = val
-            output[y] = new_row
-            rule_applied = True
-
-    return (True, output) if rule_applied else (False, None)
-
-
-def extract_nonzero_positions(grid):
-    """Extract all non-zero positions"""
-    positions = []
-    for y, row in enumerate(grid):
         for x, val in enumerate(row):
             if val != 0:
-                positions.append((x, y, val))
-    return positions
+                pattern = [val]
+                roles = ['starter']
+                print(f"📚 Learned single-symbol pattern at x={x}: [{val}] with roles {roles}")
+                patterns.append((x, pattern, val, roles))
+    print(f"✅ Total patterns learned: {len(patterns)}")
+    return patterns
 
-def infer_horizontal_repeat(grid):
+def segment_grid_into_bands(grid, band_height):
     """
-    If two non-zero values exist on the same row with consistent spacing, return the delta.
+    Splits the grid into horizontal bands of equal height.
     """
-    symbols = extract_nonzero_positions(grid)
-    horizontal_deltas = []
+    return [grid[i:i + band_height] for i in range(0, len(grid), band_height)]
 
-    for i in range(len(symbols)):
-        for j in range(i + 1, len(symbols)):
-            x1, y1, val1 = symbols[i]
-            x2, y2, val2 = symbols[j]
-
-            # Only compare same-row elements with different values
-            if y1 == y2 and val1 != val2:
-                dx = abs(x2 - x1)
-                if dx > 0:
-                    horizontal_deltas.append(dx)
-
-    # Return most common delta if any were found
-    if horizontal_deltas:
-        from collections import Counter
-        most_common = Counter(horizontal_deltas).most_common(1)[0][0]
-        return most_common
-
-    return None
-
-def propagate_symbols_horizontally(grid, delta, sym1, sym2):
+def apply_patterns_to_test_grid(grid, learned_patterns):
+    import sys
     """
-    Use the actual pattern between sym1 and sym2 to replicate it horizontally.
+    For each test row, re-apply all matching patterns from training until convergence.
+    Returns the new grid and a log of applied patterns.
     """
     height = len(grid)
     width = len(grid[0])
     output = [row.copy() for row in grid]
+    application_logs = []
 
     for y in range(height):
-        row = grid[y]
-        row_symbols = [(x, row[x]) for x in range(len(row)) if row[x] != 0]
+        result_row = list(grid[y])
+        log_row = []
+        changes_made = True
 
-        if len(row_symbols) < 2:
-            continue
+        while changes_made:
+            changes_made = False
+            for pattern_idx, (start_x, pattern, lead, roles) in enumerate(learned_patterns):
+                try:
+                    starter_offset = roles.index('starter')
+                    starter_val = pattern[starter_offset]
+                except ValueError:
+                    continue  # no starter role found
+                for apply_at in range(len(result_row) - len(pattern) + 1):
+                    check_pos = apply_at + starter_offset
+                    if check_pos >= len(result_row):
+                        continue
+                    if result_row[check_pos] != starter_val:
+                        continue
+                    segment = result_row[apply_at:apply_at + len(pattern)]
+                    if all((s == p or p == 0) for s, p in zip(segment, pattern)):
+                            if len(pattern) == 1:
+                                fill_val = pattern[0]
+                                for i in range(apply_at, len(result_row)):
+                                    result_row[i] = fill_val
+                            else:
+                                result_row[apply_at:apply_at + len(pattern)] = pattern
+                                changes_made = True
+                                log_row.append({
+                                    "pattern_idx": pattern_idx,
+                                    "start_x": start_x,
+                                    "applied_at": apply_at,
+                                    "pattern": pattern,
+                                    "roles": roles
+                                })
+        output[y] = result_row
+        application_logs.append(log_row)
 
-        row_symbols.sort()  # sort by x
-        pattern = []
-        last_x = row_symbols[0][0]
-        pattern.append(row_symbols[0][1])
-
-        for i in range(1, len(row_symbols)):
-            gap = row_symbols[i][0] - last_x - 1
-            pattern.extend([0] * gap)
-            pattern.append(row_symbols[i][1])
-            last_x = row_symbols[i][0]
-
-        pattern_len = len(pattern)
-        for x in range(row_symbols[0][0], width, pattern_len):
-            for i, val in enumerate(pattern):
-                if x + i < width:
-                    output[y][x + i] = val
+    # Print application logs for diagnostics
+    for row_idx, log_row in enumerate(application_logs):
+        if log_row:
+            pattern_ids = [entry['pattern_idx'] for entry in log_row]
+            print(f"🧩 Row {row_idx}: Patterns applied {pattern_ids}", file=sys.stderr)
+        else:
+            print(f"⚠️ Row {row_idx}: No patterns applied", file=sys.stderr)
 
     return output
 
-
-
-# ==========================
-# MAIN SOLVER LOGIC
-# ==========================
-
 def solve_task_logic(task):
-    rules = [
-        rule_all_zeros, 
-        rule_horizontal_symmetry, 
-        rule_fill_with_constant, 
-        rule_fill_diagonal, 
-        # rule_repeat_observed_pattern
-    ]
+    rules = []
 
-    train_grid = task["train"][0]["input"]
-    learned_patterns = learn_patterns_from_training(train_grid)
+    all_patterns = []
+    for pair in task["train"]:
+        train_grid = pair["input"]
+        patterns = learn_patterns_from_training(train_grid)
+        all_patterns.extend(patterns)
+    learned_patterns = all_patterns
 
     test_outputs = []
     for test in task["test"]:
-        test_output = apply_patterns_to_test_grid(test["input"], learned_patterns)
-        test_outputs.append(test_output)
+        test_input = test["input"]
+        banded_input = segment_grid_into_bands(test_input, band_height=1)  # band_height can be adjusted
+        flattened_output = []
+        for band in banded_input:
+            band_output = apply_patterns_to_test_grid(band, learned_patterns)
+            flattened_output.extend(band_output)
+        test_outputs.append(flattened_output)
 
     return test_outputs

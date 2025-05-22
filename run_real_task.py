@@ -6,7 +6,7 @@ import os
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "arc_agent")))
 
 from arc_agent.solve import solve
-from arc_agent.utils import print_grid
+from arc_agent.debug_tools import print_grid
 
 
 def load_task(path):
@@ -33,7 +33,7 @@ def run_task(task_path):
 
         if 'output' in task['test'][i]:
             expected = task['test'][i]['output']
-            from arc_agent.utils import compare_grids
+            from arc_agent.grid_tools import compare_grids
             score = compare_grids(output, expected)
             print(f"✅ Match Score: {score:.2%}")
         else:
