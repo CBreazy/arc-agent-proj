@@ -59,8 +59,6 @@ To implement recursive symbolic cognition that solves ARC grid tasks without mem
 
 ## ✨ Current Status
 
-We have implemented a functional symbolic pattern learner that achieves partial correctness (\~82%) on complex ARC tasks by:
-
 * Learning row-wise symbolic templates.
 * Matching and propagating those templates to test inputs.
 * Prioritizing explainability and symbolic transparency.
